@@ -1,0 +1,44 @@
+name: Deploy API Jogos
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  ci-cd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build and Test
+        run: mvn clean package
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Docker
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/api-jogos:latest .
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/api-jogos:latest
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/api-jogos:latest
+            docker stop api-jogos || true
+            docker rm api-jogos || true
+            docker run -d --name api-jogos -p 80:8080 ${{ secrets.DOCKERHUB_USERNAME }}/api-jogos:latest
